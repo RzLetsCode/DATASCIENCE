@@ -1,0 +1,243 @@
+import os
+import re
+import time
+import random
+import urllib.parse
+import logging
+from flask import Flask, request, jsonify
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
+from bs4 import BeautifulSoup
+from pymongo import MongoClient
+from bson import json_util
+import json
+import requests
+from requests.exceptions import RequestException
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+app = Flask(__name__)
+
+# MongoDB connection setup
+username = urllib.parse.quote_plus("kjxsofttechpvtltd")
+password = urllib.parse.quote_plus("Rz@Fas092311")
+connection_string = f"mongodb+srv://{username}:{password}@kjxwebsite.3mup0.mongodb.net/"
+
+client = MongoClient(connection_string, tls=True, tlsAllowInvalidCertificates=True)
+db = client['LinkedinScrapper']
+collection = db['Mentors data']
+
+def random_delay(min_seconds=5, max_seconds=10):
+    time.sleep(random.uniform(min_seconds, max_seconds))
+
+def wait_for_element(driver, by, value, timeout=30):
+    try:
+        return WebDriverWait(driver, timeout).until(EC.presence_of_element_located((by, value)))
+    except TimeoutException:
+        logger.warning(f"Timeout waiting for element: {by}={value}")
+        return None
+
+def login(driver, email, password):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Login attempt {attempt + 1}")
+            driver.get("https://www.linkedin.com/login")
+            email_elem = wait_for_element(driver, By.ID, "username")
+            if not email_elem:
+                raise Exception("Login page not loaded correctly")
+            email_elem.send_keys(email)
+            password_elem = driver.find_element(By.ID, "password")
+            password_elem.send_keys(password)
+            random_delay(2, 4)
+            password_elem.submit()
+            random_delay(10, 15)
+            
+            # Check if login was successful
+            if "feed" in driver.current_url:
+                logger.info("Login successful")
+                return True
+            else:
+                logger.warning("Login unsuccessful, retrying...")
+        except WebDriverException as e:
+            logger.error(f"WebDriver error during login: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error during login: {str(e)}")
+        
+        if attempt < max_retries - 1:
+            random_delay(30, 60)  # Longer delay between retry attempts
+    
+    logger.error("All login attempts failed")
+    return False
+
+def scroll_page(driver):
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    for _ in range(5):  # Limit scrolling to 5 attempts
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        random_delay(2, 4)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+def extract_user_id(profile_url):
+    return profile_url.split('/')[-2]
+
+def clean_text(text):
+    return re.sub(r'<!---->', '', text).strip() if text else ""
+
+def extract_profile_picture(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    profile_picture = soup.find('img', {'class': 'pv-top-card-profile-picture__image'})
+    return profile_picture['src'] if profile_picture else "Profile picture not found"
+
+def extract_background_image(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    background_image_tag = soup.find('div', {'class': 'profile-background-image__image-container'})
+    if background_image_tag:
+        style = background_image_tag.get('style', '')
+        url_match = re.search(r'url\("(.+?)"\)', style)
+        if url_match:
+            return url_match.group(1)
+    return "Background image not found"
+
+def scrape_profile(driver, profile_url):
+    logger.info(f"Scraping profile: {profile_url}")
+    try:
+        driver.get(profile_url)
+        random_delay(5, 10)
+        scroll_page(driver)
+
+        html_content = driver.page_source
+        user_id = extract_user_id(profile_url)
+
+        full_name_elem = wait_for_element(driver, By.XPATH, "//h1[contains(@class, 'text-heading-xlarge')]")
+        full_name = clean_text(full_name_elem.text) if full_name_elem else "Full name not found"
+
+        headline_elem = wait_for_element(driver, By.XPATH, "//div[contains(@class, 'text-body-medium') and contains(@class, 'break-words')]")
+        headline = clean_text(headline_elem.text) if headline_elem else "Headline not found"
+
+        location_elem = wait_for_element(driver, By.XPATH, "//span[contains(@class, 'text-body-small') and contains(@class, 'inline')]")
+        location = clean_text(location_elem.text) if location_elem else "Location not found"
+
+        about_elem = wait_for_element(driver, By.XPATH, "//div[@id='about']//div[contains(@class, 'display-flex')]//span")
+        about_text = clean_text(about_elem.text) if about_elem else "About section not found"
+
+        profile_picture_url = extract_profile_picture(html_content)
+        background_image_url = extract_background_image(html_content)
+
+        # Extract experiences
+        experiences = []
+        exp_elements = driver.find_elements(By.XPATH, "//section[@id='experience-section']//li")
+        for exp in exp_elements:
+            try:
+                title = exp.find_element(By.XPATH, ".//h3").text
+                company = exp.find_element(By.XPATH, ".//p[contains(@class, 'pv-entity__secondary-title')]").text
+                date_range = exp.find_element(By.XPATH, ".//h4[contains(@class, 'pv-entity__date-range')]/span[2]").text
+                experiences.append({"title": title, "company": company, "date_range": date_range})
+            except NoSuchElementException:
+                continue
+
+        # Extract education
+        educations = []
+        edu_elements = driver.find_elements(By.XPATH, "//section[@id='education-section']//li")
+        for edu in edu_elements:
+            try:
+                school = edu.find_element(By.XPATH, ".//h3").text
+                degree = edu.find_element(By.XPATH, ".//p[contains(@class, 'pv-entity__secondary-title')]").text
+                date_range = edu.find_element(By.XPATH, ".//p[contains(@class, 'pv-entity__dates')]/span[2]").text
+                educations.append({"school": school, "degree": degree, "date_range": date_range})
+            except NoSuchElementException:
+                continue
+
+        # Extract skills
+        skills = [skill.text for skill in driver.find_elements(By.XPATH, "//section[@id='skills-section']//span[@class='pv-skill-category-entity__name-text']")]
+
+        profile_data = {
+            "User ID": user_id,
+            "Full Name": full_name,
+            "Headline": headline,
+            "Location": location,
+            "Profile Picture URL": profile_picture_url,
+            "Background Image URL": background_image_url,
+            "About Section": about_text,
+            "Experience": experiences,
+            "Education": educations,
+            "Skills": skills
+        }
+
+        logger.info(f"Profile data scraped: {profile_data}")
+        return profile_data
+    except WebDriverException as e:
+        logger.error(f"WebDriver error while scraping profile {profile_url}: {str(e)}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error while scraping profile {profile_url}: {str(e)}")
+        return None
+
+def get_proxy():
+    try:
+        response = requests.get('https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all')
+        proxies = response.text.strip().split('\r\n')
+        return random.choice(proxies) if proxies else None
+    except RequestException as e:
+        logger.error(f"Error fetching proxy: {str(e)}")
+        return None
+
+@app.route('/scrape_profiles', methods=['POST'])
+def scrape_profiles():
+    try:
+        data = request.json
+        email = data.get('email')
+        password = data.get('password')
+        profile_links = data.get('profile_links')
+
+        if not email or not password or not profile_links:
+            logger.error("Missing required parameters.")
+            return jsonify({"error": "Please provide email, password, and profile_links"}), 400
+
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36")
+
+        proxy = get_proxy()
+        if proxy:
+            chrome_options.add_argument(f'--proxy-server={proxy}')
+
+        service = Service("/usr/bin/chromedriver")  # Adjust if necessary
+
+        all_profile_data = []
+        with webdriver.Chrome(service=service, options=chrome_options) as driver:
+            if not login(driver, email, password):
+                return jsonify({"error": "Login failed"}), 401
+
+            for link in profile_links:
+                try:
+                    profile_data = scrape_profile(driver, link)
+                    if profile_data:
+                        all_profile_data.append(profile_data)
+                        collection.insert_one(profile_data)
+                    random_delay(30, 60)  # Longer delay between profile scrapes
+                except Exception as scrape_error:
+                    logger.error(f"Error scraping profile {link}: {str(scrape_error)}")
+                    continue
+
+        logger.info("Scraping completed successfully.")
+        return json.loads(json_util.dumps(all_profile_data))  # Use json_util to handle MongoDB ObjectId
+
+    except Exception as e:
+        logger.error(f"Error occurred: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)

@@ -1,4 +1,11 @@
-requests==2.26.0
-beautifulsoup4==4.9.3
-nltk==3.6.3
-psycopg2==2.9.1
+beautifulsoup4==4.12.3  
+certifi==2024.8.30
+cffi==1.17.0           
+cryptography==43.0.0   
+dnspython==2.6.1       
+Flask==3.0.3           
+gunicorn==22.0.0       
+pymongo==4.8.0         
+selenium==4.23.1       
+urllib3==2.2.2         
+Werkzeug==3.0.3        

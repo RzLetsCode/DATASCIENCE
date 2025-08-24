@@ -1,0 +1,45 @@
+
+version: '3.8'
+
+services:
+  flaskapp:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - DISPLAY=:99  # Environment variable for headless Chrome
+      - MONGO_USERNAME=root
+      - MONGO_PASSWORD=example
+      - MONGO_URI=mongodb://root:example@mongodb:27017/LinkedinScrapper?authSource=admin
+    volumes:
+      - .:/app
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  mongodb:
+    image: mongo:4.4
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.runCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo_data:
+
+networks:
+  app-network:
+    driver: bridge
