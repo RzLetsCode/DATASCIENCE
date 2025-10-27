@@ -25,3 +25,39 @@ Perfect if you have basic Python knowledge
 Quickly build agents that reason over your documents
 Ideal for anyone who knows basic Python
 → https://lnkd.in/emrYAQdK<img width="780" height="600" alt="image" src="https://github.com/user-attachments/assets/69734b31-a823-4849-ae8d-0c8aaa0be9dc" />
+
+
+
+1. Python (ML Starter Language) - https://lnkd.in/dHicVNTP 
+
+2. Feature Engineering and EDA - https://lnkd.in/dkq4a9RD
+
+3. Linear Algebra - https://lnkd.in/dd89GcTU 
+
+4. Calculus - https://lnkd.in/dBagwpzc 
+
+5. Statistics and Probability - https://lnkd.in/dmvdmJyV 
+
+
+6. Machine Learning (Andrew Ng Course) - https://lnkd.in/dtd_da_N
+
+7. Deep Learning course(Krish Naik) - https://lnkd.in/dr72r68q
+
+8. Computer Vision - https://lnkd.in/dP5pRBUF 
+
+9. NLP course : https://lnkd.in/d_Rj87Gb 
+
+10. LLM Course : 
+- 1. https://lnkd.in/dhtgVtdm 
+- 2. https://cohere.com/llmu 
+
+11. AI Agent Course : https://lnkd.in/dnSMPEnc
+
+12. LLMOps : https://lnkd.in/d2PRm5GE
+
+13. LLM projects : https://lnkd.in/dkiSihiF
+
+14. GenAI projects(by Nir Diamant) : https://lnkd.in/dhYCaxhs 
+
+15. MLOPs : https://lnkd.in/dYdwZvcm<img width="573" height="717" alt="image" src="https://github.com/user-attachments/assets/023a9217-da3d-4d43-90fd-74b8b7f6420f" />
+
